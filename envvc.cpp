@@ -2,9 +2,9 @@
  * @file
  * @brief Umgebung für Visual Studio setzen
  *
- *         $Id: //depot.hugwi.ch/master/Tools/misc/envvc.cpp#2 $
- *     $Change: 21152 $
- *   $DateTime: 2005/05/02 13:46:14 $
+ *         $Id: //depot.hugwi.ch/master/Tools/misc/envvc.cpp#3 $
+ *     $Change: 21153 $
+ *   $DateTime: 2005/05/02 15:19:12 $
  *     $Author: peter.steiner $
  * $Maintainer: peter.steiner $
  *    $Created: peter.steiner 2005/04/07 $
@@ -42,9 +42,9 @@ using std::runtime_error;
 |   lokale Konstanten und Makros                                               |
 +-----------------------------------------------------------------------------*/
 
-const string msDir("SOFTWARE\\Microsoft\\");
-const string studioDir("SOFTWARE\\Microsoft\\VisualStudio\\");
-const string expressDir("SOFTWARE\\Microsoft\\VCExpress\\");
+const string msDir("HKLM\\SOFTWARE\\Microsoft\\");
+const string studioDir("HKLM\\SOFTWARE\\Microsoft\\VisualStudio\\");
+const string expressDir("HKLM\\SOFTWARE\\Microsoft\\VCExpress\\");
 
 const string banner("envvc - environment tool for Visual C++ X.Y\n"
                     "    (c) 2005 Hug-Witschi AG\n");
@@ -60,9 +60,12 @@ public:
     ~RegistryKey();
 
     std::string asString(const std::string& name) const;
+    DWORD asDword(const std::string& name) const;
 
     static std::string getString(const std::string& key,
                                  const std::string& valueName);
+    static DWORD getDword(const std::string& key,
+                          const std::string& valueName);
 private:
     HKEY keyHandle_;
 };
@@ -223,7 +226,25 @@ static void doVC6()
     putEnv("VCINSTALLDIR", vsDir);
     putEnv("VC_VERS", "60");
 
-    compiler = "Visual C++ 6.0";
+    DWORD sp = 0;
+    try {
+        sp = RegistryKey::getDword(studioDir + "6.0\\ServicePacks",
+                                   "latest");
+        compiler = "Visual C++ 6.0 SP " + string(1, static_cast<char>('0' + sp));
+    }
+    catch (runtime_error&)
+    {
+        compiler = "Visual C++ 6.0 (no ServicePack installed)";
+    }
+
+    // the current (2005-05-02) service pack is 6. Nobody should use older
+    // versions!
+    if (sp < 6)
+    {
+        // make the message look like an error message...
+        cout << vsDir << "\\install.htm(1) : error SP: "
+             << "there's a newer service pack available!" << endl;
+    }
 }
 
 /*----------------------------------------------------------------------------*/
@@ -438,11 +459,24 @@ static void putEnv(const std::string& var, const std::string& value)
 RegistryKey::RegistryKey(const std::string& key)
     : keyHandle_(0)
 {
-    // for now always HKLM
-    HKEY hkey = HKEY_LOCAL_MACHINE;
+    HKEY hkey = 0;
+
+    // split the key in the top level key part and the rest
+    string::size_type pos = key.find_first_of('\\');
+    string toplevel = key.substr(0, pos);
+    string regpath = key.substr(pos+1);
+
+    if (toplevel == "HKLM")
+        hkey = HKEY_LOCAL_MACHINE;
+    else if (toplevel == "HKCU")
+        hkey = HKEY_CURRENT_USER;
+    else if (toplevel == "HKCR")
+        hkey = HKEY_CLASSES_ROOT;
+    else if (toplevel == "HKU")
+        hkey = HKEY_USERS;
 
     LONG result = RegOpenKeyEx(hkey,
-                               key.c_str(),
+                               regpath.c_str(),
                                NULL,
                                KEY_READ, // read access is enough for now
                                &keyHandle_);
@@ -503,11 +537,40 @@ std::string RegistryKey::asString(const std::string& name) const
 }
 
 /*----------------------------------------------------------------------------*/
+DWORD RegistryKey::asDword(const std::string& name) const
+{
+    DWORD type;
+    DWORD value;
+    DWORD size = 4;
+
+    LONG result = RegQueryValueEx(keyHandle_,
+                                  name.c_str(), NULL,
+                                  &type,
+                                  reinterpret_cast<LPBYTE>(&value),
+                                  &size);
+
+    if (result != ERROR_SUCCESS)
+        throw runtime_error("Could not read " + name);
+    if (type != REG_DWORD)
+        throw runtime_error("Not a DWORD: " + name);
+
+    return value;
+}
+
+/*----------------------------------------------------------------------------*/
 std::string RegistryKey::getString(const std::string& key,
                                    const std::string& valueName)
 {
     RegistryKey regKey(key);
     return regKey.asString(valueName);
+}
+
+/*----------------------------------------------------------------------------*/
+DWORD RegistryKey::getDword(const std::string& key,
+                            const std::string& valueName)
+{
+    RegistryKey regKey(key);
+    return regKey.asDword(valueName);
 }
 
 /*----------------------------------------------------------------------------*/
