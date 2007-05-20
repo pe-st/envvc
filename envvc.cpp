@@ -2,9 +2,9 @@
  * @file
  * @brief Umgebung für Visual Studio setzen
  *
- *         $Id: //depot.hugwi.ch/master/Tools/misc/envvc.cpp#1 $
- *     $Change: 21002 $
- *   $DateTime: 2005/04/13 14:01:22 $
+ *         $Id: //depot.hugwi.ch/master/Tools/misc/envvc.cpp#2 $
+ *     $Change: 21152 $
+ *   $DateTime: 2005/05/02 13:46:14 $
  *     $Author: peter.steiner $
  * $Maintainer: peter.steiner $
  *    $Created: peter.steiner 2005/04/07 $
@@ -44,7 +44,10 @@ using std::runtime_error;
 
 const string msDir("SOFTWARE\\Microsoft\\");
 const string studioDir("SOFTWARE\\Microsoft\\VisualStudio\\");
+const string expressDir("SOFTWARE\\Microsoft\\VCExpress\\");
 
+const string banner("envvc - environment tool for Visual C++ X.Y\n"
+                    "    (c) 2005 Hug-Witschi AG\n");
 
 /*-----------------------------------------------------------------------------+
 |   lokale Typen                                                               |
@@ -53,8 +56,6 @@ const string studioDir("SOFTWARE\\Microsoft\\VisualStudio\\");
 
 class RegistryKey {
 public:
-    class Exc {};   /// exception class
-
     explicit RegistryKey(const std::string& key);
     ~RegistryKey();
 
@@ -72,9 +73,9 @@ private:
 +-----------------------------------------------------------------------------*/
 
 static void printUsage();
-static int doVC6(int argc, char* argv[]);
-static int doVC71(int argc, char* argv[]);
-static int doVC80(int argc, char* argv[]);
+static void doVC6();
+static void doVC71();
+static void doVC80();
 
 static std::string trimmedString(const std::string& key,
                                  const std::string& valueName);
@@ -86,6 +87,8 @@ static void putEnv(const std::string& var, const std::string& value);
 |   Modul-globale Variablen                                                    |
 +-----------------------------------------------------------------------------*/
 
+string envCollection;
+string compiler;
 
 /*-----------------------------------------------------------------------------+
 |   Funktionen                                                                 |
@@ -96,31 +99,58 @@ static void putEnv(const std::string& var, const std::string& value);
 /*----------------------------------------------------------------------------*/
 int main (int argc, char* argv[])
 {
-    if (argc <= 2)
-    {
-        printUsage();
-        exit(1);
-    }
-
     int retval = 1;
     try {
+        bool isVerbose = false;
+        if (argc > 1)
+        {
+            string arg1(argv[1]);
+            if (arg1 == "-v")
+            {
+                isVerbose = true;
+                --argc;
+                ++argv;
+            }
+        }
+
+        if (argc <= 1)
+        {
+            printUsage();
+            exit(1);
+        }
+
         string version(argv[1]);
         if (version == "6" || version == "60")
-            retval = doVC6(argc-2, argv+2);
+            doVC6();
         else if (version == "71")
-            retval = doVC71(argc-2, argv+2);
+            doVC71();
         else if (version == "80")
-            retval = doVC80(argc-2, argv+2);
+            doVC80();
         else
         {
             printUsage();
             exit(1);
         }
 
-        if (retval == -1)
+        if (isVerbose)
         {
-            cout << "failed to execute " << argv[2] << ": errno " << errno << ", \""
-                 << strerror(errno) << "\"\n";
+            cout << banner
+                 << "Detected: " << compiler << endl;
+        }
+
+        if (argc > 2)
+        {
+            retval = static_cast<int>(_spawnvp(_P_WAIT, argv[2], argv+2));
+            if (retval == -1)
+            {
+                cout << "failed to execute " << argv[2] << ": errno " << errno << ", \""
+                     << strerror(errno) << "\"\n";
+            }
+        }
+        else
+        {
+            cout << envCollection << endl;
+            retval = 0;
         }
     }
     catch (const std::exception& e)
@@ -145,15 +175,13 @@ int main (int argc, char* argv[])
 /*----------------------------------------------------------------------------*/
 static void printUsage()
 {
-    cout <<
-        "envvc - environment tool for Visual C++ X.Y\n"
-        "    (c) 2005 Hug-Witschi AG\n"
-        "    usage: envvc 6|71|80 command\n"
+    cout << banner
+         << "    usage: envvc [-v] 6|60|71|80 [command]\n"
          << endl;
 }
 
 /*----------------------------------------------------------------------------*/
-static int doVC6(int argc, char* argv[])
+static void doVC6()
 {
     string vc98    = trimmedString(studioDir + "6.0\\Setup\\Microsoft Visual C++",
                                    "ProductDir");
@@ -195,11 +223,11 @@ static int doVC6(int argc, char* argv[])
     putEnv("VCINSTALLDIR", vsDir);
     putEnv("VC_VERS", "60");
 
-    return static_cast<int>(_spawnvp(_P_WAIT, argv[0], argv));
+    compiler = "Visual C++ 6.0";
 }
 
 /*----------------------------------------------------------------------------*/
-static int doVC71(int argc, char* argv[])
+static void doVC71()
 {
     string instDir = trimmedString(studioDir + "7.1",
                                    "InstallDir");
@@ -262,21 +290,42 @@ static int doVC71(int argc, char* argv[])
     // these are new, but needed for v86.mak
     putEnv("VC_VERS", "71");
 
-    return static_cast<int>(_spawnvp(_P_WAIT, argv[0], argv));
+    compiler = "Visual C++ 7.1";
 }
 
 /*----------------------------------------------------------------------------*/
-static int doVC80(int argc, char* argv[])
+static void doVC80()
 {
-    string vc8     = trimmedString(studioDir + "8.0\\Setup\\VC",
+    bool isExpress = false;
+    string regDir = studioDir;
+    string vc8;
+    try
+    {
+        vc8 = trimmedString(regDir + "8.0\\Setup\\VC",
+                            "ProductDir");
+    }
+    catch (runtime_error&)
+    {
+        regDir = expressDir;
+        vc8 = trimmedString(regDir + "8.0\\Setup\\VC",
+                            "ProductDir");
+        isExpress = true;
+    }
+
+    string vsDir   = trimmedString(regDir + "8.0\\Setup\\VS",
                                    "ProductDir");
-    string vsDir   = trimmedString(studioDir + "8.0\\Setup\\VS",
-                                   "ProductDir");
-    string common7 = trimmedString(studioDir + "8.0\\Setup\\VS",
-                                   "VS7CommonDir");
-    string ideDir  = trimmedString(studioDir + "8.0\\Setup\\VS",
-                                   "EnvironmentDirectory");
-    string clrVers = trimmedString(studioDir + "8.0",
+
+    string common7 = vsDir + "\\Common7";
+    string ideDir = common7 + "\\IDE";
+    if (!isExpress)
+    {
+        common7 = trimmedString(regDir + "8.0\\Setup\\VS",
+                                "VS7CommonDir");
+        ideDir  = trimmedString(regDir + "8.0\\Setup\\VS",
+                                "EnvironmentDirectory");
+    }
+
+    string clrVers = trimmedString(regDir + "8.0",
                                    "CLR Version");
     string clrRoot = trimmedString(msDir + ".NETFramework",
                                    "InstallRoot");
@@ -321,12 +370,14 @@ static int doVC80(int argc, char* argv[])
     putEnv("INCLUDE", newinc);
     putEnv("LIB", newlib);
 
-    putEnv("LIBPATH", clrRoot + clrVers);
+    putEnv("LIBPATH", clrRoot + "\\" + clrVers);
 
     // these are new, but needed for v86.mak
     putEnv("VC_VERS", "80");
 
-    return static_cast<int>(_spawnvp(_P_WAIT, argv[0], argv));
+    compiler = isExpress
+        ? "Visual C++ 2005 Express"
+        : "Visual C++ 8.0";
 }
 
 /*----------------------------------------------------------------------------*/
@@ -373,6 +424,8 @@ static void putEnv(const std::string& var, const std::string& value)
     string putStr = var + "=" + value;
     if (_putenv(putStr.c_str()) != 0)
         throw runtime_error("_putenv failed");
+
+    envCollection += putStr + "\n";
 }
 
 /*----------------------------------------------------------------------------*/
@@ -395,7 +448,7 @@ RegistryKey::RegistryKey(const std::string& key)
                                &keyHandle_);
 
     if (result != ERROR_SUCCESS || keyHandle_ == 0)
-        throw RegistryKey::Exc();
+        throw runtime_error("Could not open " + key);
 }
 
 /*----------------------------------------------------------------------------*/
@@ -421,9 +474,9 @@ std::string RegistryKey::asString(const std::string& name) const
                                   NULL, &size);
 
     if (result != ERROR_SUCCESS)
-        throw RegistryKey::Exc();
+        throw runtime_error("Could not get size of " + name);
     if (type != REG_SZ && type != REG_EXPAND_SZ)
-        throw RegistryKey::Exc();
+        throw runtime_error("Not a string: " + name);
 
     // now get the real data
     vector<char> buffer(size);
@@ -434,22 +487,19 @@ std::string RegistryKey::asString(const std::string& name) const
                              &size);
 
     if (result != ERROR_SUCCESS)
-        throw RegistryKey::Exc();
+        throw runtime_error("Could not query " + name);
 
     if (type == REG_SZ)
     {
-        // don't keep trailing zeroes
-        vector<char>::iterator pos;
-        pos = std::find(buffer.begin(), buffer.end(), '\0');
-        return string(buffer.begin(), pos);
+        return string(&buffer[0]);
     }
     else if (type == REG_SZ)
     {
         // use ExpandEnvironmentStrings here?
-        return string(buffer.begin(), buffer.end());
+        return string(&buffer[0]);
     }
     else
-        throw RegistryKey::Exc();
+        throw runtime_error("Unexpected type: " + name);
 }
 
 /*----------------------------------------------------------------------------*/
