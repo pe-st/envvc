@@ -2,9 +2,9 @@
  * @file
  * @brief Set the environment for Visual Studio
  *
- *         $Id: //depot.hugwi.ch/master/Tools/misc/envvc.cpp#4 $
- *     $Change: 26297 $
- *   $DateTime: 2007/01/16 14:55:24 $
+ *         $Id: //depot.hugwi.ch/master/Tools/misc/envvc.cpp#5 $
+ *     $Change: 26301 $
+ *   $DateTime: 2007/01/17 11:00:46 $
  *     $Author: peter.steiner $
  * $Maintainer: peter.steiner $
  *    $Created: peter.steiner 2005/04/07 $
@@ -351,7 +351,30 @@ static bool doVC71()
 
     compiler = "Visual C++ 7.1";
 
-    // don't know yet how to detect service pack 1
+    DWORD sp = 0;
+    try {
+        sp = RegistryKey::getDword(studioDir + "7.1\\Setup\\Servicing",
+                                   "CurrentSPLevel");
+        if (sp > 0)
+            compiler += " SP " + string(1, static_cast<char>('0' + sp));
+        else
+            compiler += " (no ServicePack installed)";
+    }
+    catch (runtime_error&)
+    {
+        compiler += " (no ServicePack installed)";
+    }
+
+    // the current (2007-01-16) service pack is 1. Nobody should use older
+    // versions!
+    if (sp < 1)
+    {
+        // make the message look like an error message...
+        cout << vsDir << "\\install.htm(1) : error SP: "
+             << "there's a newer service pack available!" << endl;
+        return false;
+    }
+
     return true;
 }
 
@@ -473,15 +496,23 @@ static bool doVC80(bool useFX)
             compiler += " SP " + string(1, static_cast<char>('0' + sp));
         else
             compiler += " (no ServicePack installed)";
-
-        // as of 2007-01-16, the latest SP is 1
-        return sp == 1;
     }
     catch (runtime_error&)
     {
         compiler += " (no ServicePack installed)";
+    }
+
+    // the current (2007-01-16) service pack is 1. Nobody should use older
+    // versions!
+    if (sp < 1)
+    {
+        // make the message look like an error message...
+        cout << vc8 << "\\install.htm(1) : error SP: "
+             << "there's a newer service pack available!" << endl;
         return false;
     }
+
+    return true;
 }
 
 /*----------------------------------------------------------------------------*/
