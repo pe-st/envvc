@@ -1,10 +1,10 @@
 /**
  * @file
- * @brief Umgebung für Visual Studio setzen
+ * @brief Set the environment for Visual Studio
  *
- *         $Id: //depot.hugwi.ch/master/Tools/misc/envvc.cpp#3 $
- *     $Change: 21153 $
- *   $DateTime: 2005/05/02 15:19:12 $
+ *         $Id: //depot.hugwi.ch/master/Tools/misc/envvc.cpp#4 $
+ *     $Change: 26297 $
+ *   $DateTime: 2007/01/16 14:55:24 $
  *     $Author: peter.steiner $
  * $Maintainer: peter.steiner $
  *    $Created: peter.steiner 2005/04/07 $
@@ -12,9 +12,9 @@
  *
  */
 
-/* Header für dieses Modul ---------------------------------------------------*/
+/* headers for this module ---------------------------------------------------*/
 
-/* Standard-Header (ANSI- bzw. HW-Standard) ----------------------------------*/
+/* standard headers (ANSI, POSIX and HW standards) ---------------------------*/
 #include <iostream>
 #include <string>
 #include <vector>
@@ -23,7 +23,7 @@
 #include <stdlib.h>     // getenv, _putenv
 #include <process.h>    // _spawnvp
 
-/* Header von anderen Modulen ------------------------------------------------*/
+/* headers from other modules ------------------------------------------------*/
 #include <windows.h>
 
 
@@ -39,18 +39,19 @@ using std::vector;
 using std::runtime_error;
 
 /*-----------------------------------------------------------------------------+
-|   lokale Konstanten und Makros                                               |
+|   local constants, macros and enums                                          |
 +-----------------------------------------------------------------------------*/
 
 const string msDir("HKLM\\SOFTWARE\\Microsoft\\");
+const string devDiv("HKLM\\SOFTWARE\\Microsoft\\DevDiv\\");
 const string studioDir("HKLM\\SOFTWARE\\Microsoft\\VisualStudio\\");
 const string expressDir("HKLM\\SOFTWARE\\Microsoft\\VCExpress\\");
 
 const string banner("envvc - environment tool for Visual C++ X.Y\n"
-                    "    (c) 2005 Hug-Witschi AG\n");
+                    "    (c) 2005-2007 Peter Steiner and Hug-Witschi AG\n");
 
 /*-----------------------------------------------------------------------------+
-|   lokale Typen                                                               |
+|   local types                                                                |
 +-----------------------------------------------------------------------------*/
 
 
@@ -72,13 +73,13 @@ private:
 
 
 /*-----------------------------------------------------------------------------+
-|   Deklaration von lokalen Funktionen (Hilfsfunktionen)                       |
+|   declaration of local (static) functions                                    |
 +-----------------------------------------------------------------------------*/
 
 static void printUsage();
-static void doVC6();
-static void doVC71();
-static void doVC80();
+static bool doVC6();
+static bool doVC71();
+static bool doVC80(bool useFX);
 
 static std::string trimmedString(const std::string& key,
                                  const std::string& valueName);
@@ -87,14 +88,14 @@ static std::string getEnv(const std::string& var);
 static void putEnv(const std::string& var, const std::string& value);
 
 /*-----------------------------------------------------------------------------+
-|   Modul-globale Variablen                                                    |
+|   module global variables                                                    |
 +-----------------------------------------------------------------------------*/
 
 string envCollection;
 string compiler;
 
 /*-----------------------------------------------------------------------------+
-|   Funktionen                                                                 |
+|   functions                                                                  |
 +-----------------------------------------------------------------------------*/
 
 
@@ -105,7 +106,10 @@ int main (int argc, char* argv[])
     int retval = 1;
     try {
         bool isVerbose = false;
-        if (argc > 1)
+        bool isForced = false;
+        bool useFX = false;
+        bool foundValidOption = true;
+        while (argc > 1 && foundValidOption)
         {
             string arg1(argv[1]);
             if (arg1 == "-v")
@@ -114,6 +118,20 @@ int main (int argc, char* argv[])
                 --argc;
                 ++argv;
             }
+            else if (arg1 == "-f")
+            {
+                isForced = true;
+                --argc;
+                ++argv;
+            }
+            else if (arg1 == "fx")
+            {
+                useFX = true;
+                --argc;
+                ++argv;
+            }
+            else
+                foundValidOption = false;
         }
 
         if (argc <= 1)
@@ -123,15 +141,28 @@ int main (int argc, char* argv[])
         }
 
         string version(argv[1]);
+        bool isCurrent;
         if (version == "6" || version == "60")
-            doVC6();
+            isCurrent = doVC6();
         else if (version == "71")
-            doVC71();
+            isCurrent = doVC71();
         else if (version == "80")
-            doVC80();
+            isCurrent = doVC80(useFX);
         else
         {
             printUsage();
+            exit(1);
+        }
+
+        if (useFX && version != "80")
+        {
+            cout << "Option 'fx' not supported for this version ("
+                 << compiler << ")." << endl;
+        }
+
+        if (!isForced && !isCurrent)
+        {
+            cout << "Please install the lastest Service Pack or use option '-f'" << endl;
             exit(1);
         }
 
@@ -172,19 +203,23 @@ int main (int argc, char* argv[])
 
 
 /*-----------------------------------------------------------------------------+
-|   Lokale Funktionen (Hilfsfunktionen)                                        |
+|   local (static) functions                                                   |
 +-----------------------------------------------------------------------------*/
 
 /*----------------------------------------------------------------------------*/
 static void printUsage()
 {
     cout << banner
-         << "    usage: envvc [-v] 6|60|71|80 [command]\n"
+         << "    usage: envvc [-v] [-f] [fx] 6|60|71|80 [command...]\n"
+         << "    -v      : verbose. Print the detected compiler version.\n"
+         << "    -f      : force execution even w/o the latest service pack\n"
+         << "    fx      : use the .NET 3 SDK (formerly WinFX)\n"
+         << "    command : command to execute within the changed environment\n"
          << endl;
 }
 
 /*----------------------------------------------------------------------------*/
-static void doVC6()
+static bool doVC6()
 {
     string vc98    = trimmedString(studioDir + "6.0\\Setup\\Microsoft Visual C++",
                                    "ProductDir");
@@ -244,11 +279,14 @@ static void doVC6()
         // make the message look like an error message...
         cout << vsDir << "\\install.htm(1) : error SP: "
              << "there's a newer service pack available!" << endl;
+        return false;
     }
+
+    return true;
 }
 
 /*----------------------------------------------------------------------------*/
-static void doVC71()
+static bool doVC71()
 {
     string instDir = trimmedString(studioDir + "7.1",
                                    "InstallDir");
@@ -312,10 +350,13 @@ static void doVC71()
     putEnv("VC_VERS", "71");
 
     compiler = "Visual C++ 7.1";
+
+    // don't know yet how to detect service pack 1
+    return true;
 }
 
 /*----------------------------------------------------------------------------*/
-static void doVC80()
+static bool doVC80(bool useFX)
 {
     bool isExpress = false;
     string regDir = studioDir;
@@ -353,6 +394,10 @@ static void doVC80()
     string clrSdk  = trimmedString(msDir + ".NETFramework",
                                    "sdkInstallRootv2.0");
 
+    string msSdk = useFX
+        ? trimmedString(msDir + "Microsoft SDKs\\Windows", "CurrentInstallFolder")
+        : "";
+
     // these are taken from
     // "C:\Programme\Microsoft Visual Studio 8\Common7\Tools\vsvars32.bat"
     putEnv("VSINSTALLDIR", vsDir);
@@ -362,13 +407,31 @@ static void doVC80()
     putEnv("FrameworkSDKDir", clrSdk);
     putEnv("DevEnvDir", ideDir);
 
+    string fxInc;
+    if (useFX)
+    {
+        // these are taken from
+        // "C:\Program Files\Microsoft SDKs\Windows\v6.0\Bin\SetEnv.Cmd"
+        putEnv("MSSdk", msSdk);
+        putEnv("SdkTools", msSdk + "\\Bin");
+        putEnv("OSLibraries", msSdk + "\\Lib");
+        fxInc = msSdk + "\\Include;" + msSdk + "\\Include\\gl";
+        putEnv("OSIncludes", fxInc);
+        putEnv("VCTools", msSdk + "\\VC\\Bin");
+        putEnv("VCLibraries", msSdk + "\\VC\\Lib");
+        putEnv("VCIncludes", msSdk + "\\VC\\Include;" + msSdk + "\\VC\\Include\\Sys");
+        putEnv("ReferenceAssemblies", "%ProgramFiles%\\Reference Assemblies\\Microsoft\\WinFX\\v3.0");
+    }
+
     string oldpath = getEnv("PATH");
     string oldinc = getEnv("INCLUDE");
     string oldlib = getEnv("LIB");
 
     string newpath
         = ideDir + ";"
+        + (useFX ? (msSdk + "\\bin;") : "")
         + vc8 + "\\bin;"
+        + (useFX ? "" : (vc8 + "\\platformSDK\\bin;"))
         + vc8 + "\\vcpackages;"
         + common7 + "\\tools;"
         + common7 + "\\tools\\bin;"
@@ -376,15 +439,17 @@ static void doVC80()
         + clrRoot + "\\" + clrVers + ";"
         + oldpath;
     string newinc
-        = vc8 + "\\atlmfc\\include;"
+        = (useFX ? (fxInc + ";") : "")
+        + vc8 + "\\atlmfc\\include;"
         + vc8 + "\\include;"
-        + vc8 + "\\platformSDK\\include;"
+        + (useFX ? "" : (vc8 + "\\platformSDK\\include;"))
         + clrSdk + "\\include;"
         + oldinc;
     string newlib
-        = vc8 + "\\atlmfc\\lib;"
+        = (useFX ? (msSdk + "\\lib;") : "")
+        + vc8 + "\\atlmfc\\lib;"
         + vc8 + "\\lib;"
-        + vc8 + "\\platformSDK\\lib;"
+        + (useFX ? "" : (vc8 + "\\platformSDK\\lib;"))
         + clrSdk + "\\lib;"
         + oldlib;
     putEnv("PATH", newpath);
@@ -399,6 +464,24 @@ static void doVC80()
     compiler = isExpress
         ? "Visual C++ 2005 Express"
         : "Visual C++ 8.0";
+
+    DWORD sp = 0;
+    try {
+        sp = RegistryKey::getDword(devDiv + "VS\\Servicing\\8.0",
+                                   "SP");
+        if (sp > 0)
+            compiler += " SP " + string(1, static_cast<char>('0' + sp));
+        else
+            compiler += " (no ServicePack installed)";
+
+        // as of 2007-01-16, the latest SP is 1
+        return sp == 1;
+    }
+    catch (runtime_error&)
+    {
+        compiler += " (no ServicePack installed)";
+        return false;
+    }
 }
 
 /*----------------------------------------------------------------------------*/
@@ -426,7 +509,7 @@ static std::string trimmedString(const std::string& key,
 /*----------------------------------------------------------------------------*/
 
 /*-----------------------------------------------------------------------------+
-|   Environment functions                                                      |
+|   environment functions                                                      |
 +-----------------------------------------------------------------------------*/
 
 /*----------------------------------------------------------------------------*/
