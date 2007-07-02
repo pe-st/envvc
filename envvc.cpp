@@ -8,7 +8,11 @@
  *     $Author: peter.steiner $
  * $Maintainer: peter.steiner $
  *    $Created: peter.steiner 2005/04/07 $
- *  $Copyright: Hug-Witschi AG, CH-3178 Bösingen, http://www.hugwi.ch $
+ *
+ * Copyright Peter Steiner and Hug-Witschi AG 2005 - 2007.
+ * Distributed under the Boost Software License, Version 1.0.
+ * (See accompanying file LICENSE_1_0.txt or copy at
+ * http://www.boost.org/LICENSE_1_0.txt)
  *
  */
 
