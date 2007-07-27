@@ -595,7 +595,7 @@ RegistryKey::RegistryKey(const std::string& key)
 
     LONG result = RegOpenKeyEx(hkey,
                                regpath.c_str(),
-                               NULL,
+                               0,
                                KEY_READ, // read access is enough for now
                                &keyHandle_);
 
