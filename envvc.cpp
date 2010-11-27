@@ -52,7 +52,8 @@ const string studioDir("HKLM\\SOFTWARE\\Microsoft\\VisualStudio\\");
 const string expressDir("HKLM\\SOFTWARE\\Microsoft\\VCExpress\\");
 
 const string banner("envvc - environment tool for Visual C++ X.Y\n"
-                    "    (c) 2005-2007 Peter Steiner and Hug-Witschi AG\n");
+                    "    (c) 2005-2010 Peter Steiner\n"
+                    "    (c) 2005-2007 Hug-Witschi AG\n");
 
 /*-----------------------------------------------------------------------------+
 |   local types                                                                |
@@ -84,6 +85,7 @@ static void printUsage();
 static bool doVC6();
 static bool doVC71();
 static bool doVC80(bool useFX);
+static bool doVC90();
 
 static std::string trimmedString(const std::string& key,
                                  const std::string& valueName);
@@ -152,6 +154,8 @@ int main (int argc, char* argv[])
             isCurrent = doVC71();
         else if (version == "80")
             isCurrent = doVC80(useFX);
+        else if (version == "90")
+            isCurrent = doVC90();
         else
         {
             printUsage();
@@ -214,7 +218,7 @@ int main (int argc, char* argv[])
 static void printUsage()
 {
     cout << banner
-         << "    usage: envvc [-v] [-f] [fx] 6|60|71|80 [command...]\n"
+         << "    usage: envvc [-v] [-f] [fx] 6|60|71|80|90 [command...]\n"
          << "    -v      : verbose. Print the detected compiler version.\n"
          << "    -f      : force execution even w/o the latest service pack\n"
          << "    fx      : use the .NET 3 SDK (formerly WinFX)\n"
@@ -520,6 +524,158 @@ static bool doVC80(bool useFX)
 }
 
 /*----------------------------------------------------------------------------*/
+static bool doVC90()
+{
+    bool isExpress = false;
+    string regDir = studioDir;
+    string vc9;
+    try
+    {
+        vc9 = trimmedString(regDir + "9.0\\Setup\\VC",
+                            "ProductDir");
+    }
+    catch (runtime_error&)
+    {
+        regDir = expressDir;
+        vc9 = trimmedString(regDir + "9.0\\Setup\\VC",
+                            "ProductDir");
+        isExpress = true;
+    }
+
+    string vsDir   = trimmedString(regDir + "9.0\\Setup\\VS",
+                                   "ProductDir");
+
+    string common7 = vsDir + "\\Common7";
+    string ideDir = common7 + "\\IDE";
+    if (!isExpress)
+    {
+        common7 = trimmedString(regDir + "9.0\\Setup\\VS",
+                                "VS7CommonDir");
+        ideDir  = trimmedString(regDir + "9.0\\Setup\\VS",
+                                "EnvironmentDirectory");
+    }
+
+    string clrVers = trimmedString(regDir + "9.0",
+                                   "CLR Version");
+    string clrRoot = trimmedString(msDir + ".NETFramework",
+                                   "InstallRoot");
+//     string clrSdk  = trimmedString(msDir + ".NETFramework",
+//                                    "sdkInstallRootv2.0");
+    string clr35   = "v3.5"; // @todo
+
+    string msSdk = trimmedString(msDir + "Microsoft SDKs\\Windows", "CurrentInstallFolder");
+
+    // these are taken from
+    // "C:\Programme\Microsoft Visual Studio 9.0\Common7\Tools\vsvars32.bat"
+    putEnv("VSINSTALLDIR", vsDir);
+    putEnv("VCINSTALLDIR", vc9);
+    putEnv("FrameworkDir", clrRoot);
+    putEnv("FrameworkVersion", clrVers);
+    putEnv("Framework35Version", clr35);
+//    putEnv("FrameworkSDKDir", clrSdk);
+    putEnv("DevEnvDir", ideDir);
+
+//     string fxInc;
+//     if (useFX)
+//     {
+//         // these are taken from
+//         // "C:\Program Files\Microsoft SDKs\Windows\v6.0\Bin\SetEnv.Cmd"
+//         putEnv("MSSdk", msSdk);
+//         putEnv("SdkTools", msSdk + "\\Bin");
+//         putEnv("OSLibraries", msSdk + "\\Lib");
+//         fxInc = msSdk + "\\Include;" + msSdk + "\\Include\\gl";
+//         putEnv("OSIncludes", fxInc);
+//         putEnv("VCTools", msSdk + "\\VC\\Bin");
+//         putEnv("VCLibraries", msSdk + "\\VC\\Lib");
+//         putEnv("VCIncludes", msSdk + "\\VC\\Include;" + msSdk + "\\VC\\Include\\Sys");
+//         putEnv("ReferenceAssemblies", "%ProgramFiles%\\Reference Assemblies\\Microsoft\\WinFX\\v3.0");
+//     }
+
+    string oldpath = getEnv("PATH");
+    string oldinc = getEnv("INCLUDE");
+    string oldlib = getEnv("LIB");
+    string oldlibpath = getEnv("LIBPATH");
+
+    string newpath
+        = ideDir + ";"
+        + msSdk + "\\bin;"
+        + vc9 + "\\bin;"
+//        + (useFX ? "" : (vc9 + "\\platformSDK\\bin;"))
+        + common7 + "\\tools;"
+//        + common7 + "\\tools\\bin;"
+//        + clrSdk + "\\bin;"
+        + clrRoot + "\\" + clr35 + ";"
+        + clrRoot + "\\" + clrVers + ";"
+        + vc9 + "\\VCPackages;"
+        + oldpath;
+    string newinc
+//        = (useFX ? (fxInc + ";") : "")
+//        + vc9 + "\\atlmfc\\include;"
+        = vc9 + "\\include;"
+//        + (useFX ? "" : (vc9 + "\\platformSDK\\include;"))
+//        + clrSdk + "\\include;"
+        + oldinc;
+    string newlib
+        = msSdk + "\\lib;"
+//        + vc9 + "\\atlmfc\\lib;"
+        + vc9 + "\\lib;"
+//        + (useFX ? "" : (vc9 + "\\platformSDK\\lib;"))
+//        + clrSdk + "\\lib;"
+        + oldlib;
+    string newlibpath
+        = clrRoot + "\\" + clr35 + ";"
+        + clrRoot + "\\" + clrVers + ";"
+//        + vc9 + "\\atlmfc\\lib;"
+        + vc9 + "\\lib;"
+//        + (useFX ? "" : (vc9 + "\\platformSDK\\lib;"))
+//        + clrSdk + "\\lib;"
+        + oldlibpath;
+    putEnv("PATH", newpath);
+    putEnv("INCLUDE", newinc);
+    putEnv("LIB", newlib);
+    putEnv("LIBPATH", newlibpath);
+
+    // these are new, but needed for v86.mak
+    putEnv("VC_VERS", "90");
+
+    compiler = isExpress
+        ? "Visual C++ 2008 Express"
+        : "Visual C++ 9.0";
+
+    DWORD sp = 0;
+    try {
+        sp = RegistryKey::getDword(devDiv + "VS\\Servicing\\9.0",
+                                   "SP");
+    }
+    catch (runtime_error&)
+    {
+        try {
+            sp = RegistryKey::getDword(devDiv + "VC\\Servicing\\9.0",
+                                       "SP");
+        }
+        catch (runtime_error&)
+        {
+        }
+    }
+    if (sp > 0)
+        compiler += " SP " + string(1, static_cast<char>('0' + sp));
+    else
+        compiler += " (no ServicePack installed)";
+
+    // the current (2010-01-21) service pack is 1. Nobody should use older
+    // versions!
+    if (sp < 1)
+    {
+        // make the message look like an error message...
+        cout << vc9 << "\\install.htm(1) : error SP: "
+             << "there's a newer service pack available!" << endl;
+        return false;
+    }
+
+    return true;
+}
+
+/*----------------------------------------------------------------------------*/
 /**
  * Reads a registry value and chops off trailing blanks and backslashes
  *
@@ -595,7 +751,7 @@ RegistryKey::RegistryKey(const std::string& key)
 
     LONG result = RegOpenKeyEx(hkey,
                                regpath.c_str(),
-                               0,
+                               NULL,
                                KEY_READ, // read access is enough for now
                                &keyHandle_);
 
