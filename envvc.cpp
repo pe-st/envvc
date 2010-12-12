@@ -9,7 +9,8 @@
  * $Maintainer: peter.steiner $
  *    $Created: peter.steiner 2005/04/07 $
  *
- * Copyright Peter Steiner and Hug-Witschi AG 2005 - 2007.
+ * Copyright Peter Steiner 2005 - 2010.
+ * Copyright Hug-Witschi AG 2005 - 2007.
  * Distributed under the Boost Software License, Version 1.0.
  * (See accompanying file LICENSE_1_0.txt or copy at
  * http://www.boost.org/LICENSE_1_0.txt)
@@ -86,6 +87,7 @@ static bool doVC6();
 static bool doVC71();
 static bool doVC80(bool useFX);
 static bool doVC90();
+static bool doVC100();
 
 static std::string trimmedString(const std::string& key,
                                  const std::string& valueName);
@@ -156,6 +158,8 @@ int main (int argc, char* argv[])
             isCurrent = doVC80(useFX);
         else if (version == "90")
             isCurrent = doVC90();
+        else if (version == "100")
+            isCurrent = doVC100();
         else
         {
             printUsage();
@@ -671,6 +675,139 @@ static bool doVC90()
              << "there's a newer service pack available!" << endl;
         return false;
     }
+
+    return true;
+}
+
+/*----------------------------------------------------------------------------*/
+static bool doVC100()
+{
+    bool isExpress = true;
+    string regDir = expressDir;
+    string vc10;
+    try
+    {
+        vc10 = trimmedString(regDir + "10.0\\Setup\\VC",
+                             "ProductDir");
+    }
+    catch (runtime_error&)
+    {
+        regDir = studioDir;
+        vc10 = trimmedString(regDir + "10.0\\Setup\\VC",
+                             "ProductDir");
+        isExpress = false;
+    }
+
+    string vsDir = trimmedString(regDir + "10.0\\Setup\\VS",
+                                 "ProductDir");
+
+    string common7 = vsDir + "\\Common7";
+    string ideDir = common7 + "\\IDE";
+    if (!isExpress)
+    {
+        common7 = trimmedString(regDir + "10.0\\Setup\\VS",
+                                "VS7CommonDir");
+        ideDir  = trimmedString(regDir + "10.0\\Setup\\VS",
+                                "EnvironmentDirectory");
+    }
+
+    string clrVers = trimmedString(regDir + "10.0",
+                                   "CLR Version");
+    string clrRoot = trimmedString(msDir + ".NETFramework",
+                                   "InstallRoot");
+    string clrSdk  = trimmedString(msDir + ".NETFramework",
+                                   "sdkInstallRootv2.0");
+    string clr35   = "v3.5"; // @todo
+
+    // note that VCVarsQueryRegistry.bat explicity tests for v7.0A
+    string msSdk = trimmedString(msDir + "Microsoft SDKs\\Windows", "CurrentInstallFolder");
+
+    // these are taken from
+    // "C:\Programme\Microsoft Visual Studio 10.0\Common7\Tools\vsvars32.bat"
+    // and
+    // "C:\Programme\Microsoft Visual Studio 10.0\Common7\Tools\VCVarsQueryRegistry.bat"
+    putEnv("VSINSTALLDIR", vsDir);
+    putEnv("VCINSTALLDIR", vc10);
+    putEnv("VC100COMNTOOLS", vc10);
+    putEnv("FrameworkDir", clrRoot);
+    putEnv("FrameworkDIR32", clrRoot);
+    putEnv("FrameworkVersion", clrVers);
+    putEnv("FrameworkVersion32", clrVers);
+    putEnv("Framework35Version", clr35);
+//    putEnv("FrameworkSDKDir", clrSdk);
+    putEnv("WindowsSdkDir", msSdk);
+    putEnv("DevEnvDir", ideDir);
+
+//     string fxInc;
+//     if (useFX)
+//     {
+//         // these are taken from
+//         // "C:\Program Files\Microsoft SDKs\Windows\v6.0\Bin\SetEnv.Cmd"
+//         putEnv("MSSdk", msSdk);
+//         putEnv("SdkTools", msSdk + "\\Bin");
+//         putEnv("OSLibraries", msSdk + "\\Lib");
+//         fxInc = msSdk + "\\Include;" + msSdk + "\\Include\\gl";
+//         putEnv("OSIncludes", fxInc);
+//         putEnv("VCTools", msSdk + "\\VC\\Bin");
+//         putEnv("VCLibraries", msSdk + "\\VC\\Lib");
+//         putEnv("VCIncludes", msSdk + "\\VC\\Include;" + msSdk + "\\VC\\Include\\Sys");
+//         putEnv("ReferenceAssemblies", "%ProgramFiles%\\Reference Assemblies\\Microsoft\\WinFX\\v3.0");
+//     }
+
+    string oldpath = getEnv("PATH");
+    string oldinc = getEnv("INCLUDE");
+    string oldlib = getEnv("LIB");
+    string oldlibpath = getEnv("LIBPATH");
+
+    string newpath
+        = ideDir + ";"
+//        + msSdk + "\\bin;"
+        + vc10 + "\\bin;"
+//        + (useFX ? "" : (vc10 + "\\platformSDK\\bin;"))
+        + common7 + "\\tools;"
+//        + common7 + "\\tools\\bin;"
+//        + clrSdk + "\\bin;"
+        + clrRoot + "\\" + clrVers + ";"
+        + clrRoot + "\\" + clr35 + ";"
+        + vc10 + "\\VCPackages;"
+        + msSdk + "\\bin\\NETFX 4.0 Tools;"
+        + msSdk + "\\bin;"
+        + oldpath;
+    string newinc
+//        = (useFX ? (fxInc + ";") : "")
+//        + vc10 + "\\atlmfc\\include;"
+        = vc10 + "\\include;"
+        + msSdk + "\\include;"
+//        + (useFX ? "" : (vc10 + "\\platformSDK\\include;"))
+//        + clrSdk + "\\include;"
+        + oldinc;
+    string newlib
+        = msSdk + "\\lib;"
+//        + vc10 + "\\atlmfc\\lib;"
+        + vc10 + "\\lib;"
+        + msSdk + "\\lib;"
+//        + (useFX ? "" : (vc10 + "\\platformSDK\\lib;"))
+//        + clrSdk + "\\lib;"
+        + oldlib;
+    string newlibpath
+        = clrRoot + "\\" + clr35 + ";"
+        + clrRoot + "\\" + clrVers + ";"
+//        + vc10 + "\\atlmfc\\lib;"
+        + vc10 + "\\lib;"
+//        + (useFX ? "" : (vc10 + "\\platformSDK\\lib;"))
+//        + clrSdk + "\\lib;"
+        + oldlibpath;
+    putEnv("PATH", newpath);
+    putEnv("INCLUDE", newinc);
+    putEnv("LIB", newlib);
+    putEnv("LIBPATH", newlibpath);
+
+    // these are new, but needed for v86.mak
+    putEnv("VC_VERS", "100");
+
+    compiler = isExpress
+        ? "Visual C++ 2010 Express"
+        : "Visual C++ 10.0";
 
     return true;
 }
